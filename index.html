@@ -2,7 +2,7 @@
 <html lang="ru">
 <head>
 <meta charset="UTF-8" />
-<title>Simple Chat</title>
+<title>Simple Chat Online</title>
 <style>
   *{margin:0;padding:0;box-sizing:border-box;font-family:Arial, sans-serif;}  
   body{background:#0f111a;color:#fff;height:100vh;display:flex;}
@@ -24,6 +24,10 @@
   .addFriend input{flex:1;padding:10px;border-radius:8px;border:none;background:#1b1f2c;color:#fff;} 
   .addFriend button{margin-left:8px;padding:10px;background:#4c6ef5;border:none;border-radius:8px;color:#fff;cursor:pointer;} 
 </style>
+
+<!-- Firebase SDK -->
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-database-compat.js"></script>
 </head>
 <body>
 
@@ -56,29 +60,38 @@
 
 <script>
 // ---------------------------
-// STORAGE
+// FIREBASE CONFIG
 // ---------------------------
-let state = JSON.parse(localStorage.getItem("simpleChat")) || {
-  myId: null,
-  contacts: [],
-  messages: {}
+const firebaseConfig = {
+  apiKey: "YOUR_API_KEY",
+  authDomain: "YOUR_PROJECT_ID.firebaseapp.com",
+  databaseURL: "https://YOUR_PROJECT_ID.firebaseio.com",
+  projectId: "YOUR_PROJECT_ID",
+  storageBucket: "YOUR_PROJECT_ID.appspot.com",
+  messagingSenderId: "YOUR_SENDER_ID",
+  appId: "YOUR_APP_ID"
+};
+firebase.initializeApp(firebaseConfig);
+const db = firebase.database();
+
+// ---------------------------
+// LOCAL STATE
+// ---------------------------
+let state = {
+  myId: localStorage.getItem("myId") || null,
+  contacts: []
 };
 
-function saveState(){ localStorage.setItem("simpleChat", JSON.stringify(state)); }
 function uid(){ return Math.random().toString(36).substring(2,10); }
 
-// ---------------------------
-// GENERATE PROFILE ID
-// ---------------------------
 if(!state.myId){
   state.myId = "id_" + uid();
-  saveState();
+  localStorage.setItem("myId", state.myId);
 }
-
 document.getElementById("myId").textContent = state.myId;
 
 // ---------------------------
-// RENDER CONTACT LIST
+// CONTACTS
 // ---------------------------
 let activeChat = null;
 const contactsDiv = document.getElementById("contacts");
@@ -91,83 +104,58 @@ function renderContacts(filter=""){
       const el = document.createElement("div");
       el.className = "contact" + (activeChat===c.id?" active":"");
       el.textContent = c.name + " (" + c.id + ")";
-      el.onclick = ()=>{ activeChat = c.id; renderContacts(filter); renderMessages(); };
+      el.onclick = ()=>{ activeChat = c.id; renderContacts(filter); listenMessages(activeChat); };
       contactsDiv.appendChild(el);
     });
 }
 
-renderContacts();
-
-// ---------------------------
-// ADD FRIEND BY NAME
-// ---------------------------
 document.getElementById("addFriendBtn").onclick = ()=>{
-  const name = friendName.value.trim();
+  const name = document.getElementById("friendName").value.trim();
   if(!name) return;
   const id = "id_" + uid();
-
   state.contacts.push({id,name});
-  state.messages[id] = [];
-  saveState();
-
-  friendName.value="";
+  document.getElementById("friendName").value="";
   renderContacts();
 };
 
-// ---------------------------
-// SEARCH FRIEND BY ID
-// ---------------------------
 document.getElementById("searchInput").oninput = function(){
   const v = this.value.trim();
-
-  if(/^id_[a-z0-9]{6,}$/.test(v)){
-    if(!state.contacts.some(x=>x.id===v)){
-      state.contacts.push({id:v,name:"Friend_"+v.slice(-4)});
-      state.messages[v] = [];
-      saveState();
-    }
+  if(/^id_[a-z0-9]{6,}$/.test(v) && !state.contacts.some(x=>x.id===v)){
+    state.contacts.push({id:v,name:"Friend_"+v.slice(-4)});
   }
-
   renderContacts(v);
 };
 
+renderContacts();
+
 // ---------------------------
-// RENDER MESSAGES
+// MESSAGES
 // ---------------------------
-function renderMessages(){
+function listenMessages(chatId){
   const box = document.getElementById("messages");
   box.innerHTML = "";
-  if(!activeChat) return;
-
-  (state.messages[activeChat] || []).forEach(m=>{
-    const d=document.createElement("div");
-    d.className="msg " + (m.from==="me"?"me":"friend");
+  db.ref('messages/' + chatId).off(); // сброс слушателя
+  db.ref('messages/' + chatId).on('child_added', snapshot=>{
+    const m = snapshot.val();
+    const d = document.createElement("div");
+    d.className="msg " + (m.from===state.myId?"me":"friend");
     d.textContent = m.text;
     box.appendChild(d);
+    box.scrollTop = box.scrollHeight;
   });
-
-  box.scrollTop = box.scrollHeight;
 }
 
-// ---------------------------
-// SEND MESSAGE
-// ---------------------------
 function send(){
   if(!activeChat) return;
-  const input=document.getElementById("msgInput");
-  const txt=input.value.trim();
+  const txt = document.getElementById("msgInput").value.trim();
   if(!txt) return;
-
-  state.messages[activeChat].push({from:"me",text:txt});
-  saveState();
-
-  input.value="";
-  renderMessages();
+  const msg = {from:state.myId, text:txt, time:Date.now()};
+  db.ref('messages/' + activeChat).push(msg);
+  document.getElementById("msgInput").value="";
 }
 
 document.getElementById("sendBtn").onclick = send;
 document.getElementById("msgInput").onkeydown = e=>{ if(e.key==="Enter") send(); };
-
 </script>
 </body>
 </html>
