@@ -42,7 +42,7 @@
   </div>
 
   <div class="addFriend">
-    <input id="friendName" placeholder="Имя друга" />
+    <input id="friendName" placeholder="Имя друга или ID" />
     <button id="addFriendBtn">+</button>
   </div>
 
@@ -110,19 +110,29 @@ function renderContacts(filter=""){
 }
 
 document.getElementById("addFriendBtn").onclick = ()=>{
-  const name = document.getElementById("friendName").value.trim();
-  if(!name) return;
-  const id = "id_" + uid();
-  state.contacts.push({id,name});
+  let input = document.getElementById("friendName").value.trim();
+  if(!input) return;
+
+  let id, name;
+  if(/^id_[a-z0-9]{6,}$/.test(input)){
+    id = input;
+    name = "Friend_" + id.slice(-4);
+  } else {
+    id = "id_" + uid();
+    name = input;
+  }
+
+  if(!state.contacts.some(c=>c.id===id)){
+    state.contacts.push({id,name});
+  }
+
   document.getElementById("friendName").value="";
   renderContacts();
 };
 
+// Поиск контактов
 document.getElementById("searchInput").oninput = function(){
   const v = this.value.trim();
-  if(/^id_[a-z0-9]{6,}$/.test(v) && !state.contacts.some(x=>x.id===v)){
-    state.contacts.push({id:v,name:"Friend_"+v.slice(-4)});
-  }
   renderContacts(v);
 };
 
@@ -134,7 +144,8 @@ renderContacts();
 function listenMessages(chatId){
   const box = document.getElementById("messages");
   box.innerHTML = "";
-  db.ref('messages/' + chatId).off(); // сброс слушателя
+
+  db.ref('messages/' + chatId).off();
   db.ref('messages/' + chatId).on('child_added', snapshot=>{
     const m = snapshot.val();
     const d = document.createElement("div");
